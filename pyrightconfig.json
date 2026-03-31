@@ -1,0 +1,10 @@
+{
+  "include": ["."],
+  "venvPath": "/Users/zaochuan/Documents/code/python/.venvs",
+  "venv": "SecKnow",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}
