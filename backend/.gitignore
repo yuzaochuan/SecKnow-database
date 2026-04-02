@@ -11,10 +11,11 @@ __pycache__/
 *.py,cover
 
 # 虚拟环境
-venv/
-.env/
-.venv/
 
+.venv/
+venv/
+*.egg-info/
+__pycache__/
 # =========================
 # macOS 系统文件
 # =========================
@@ -22,3 +23,12 @@ venv/
 .AppleDouble
 .LSOverride
 
+# =========================
+# Local database/index artifacts
+# =========================
+db/*.sqlite
+db/*.sqlite3
+db/*.faiss
+db/*.index
+db/*.json
+db/*.npy
