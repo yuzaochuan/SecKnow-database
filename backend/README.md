@@ -112,6 +112,77 @@ Phase 1 的唯一契约来源是：
 
 ```text
 backend/src/secknow/text_processing/
+├── __init__.py
+├── facade.py                     # 对外统一入口：load_document / chunk_text / dedup / encode_chunks / run_pipeline
+├── config.py                     # 4.1 模块配置：分块参数、支持格式、默认编码模型、去重阈值等
+├── exceptions.py                 # 文本处理模块专用异常定义
+│
+├── loaders/                      # 文档加载层：负责“文件 -> 原始文本”
+│   ├── __init__.py
+│   ├── base.py                   # Loader 抽象接口
+│   ├── router.py                 # 按扩展名/文件类型选择对应 loader
+│   ├── pdf_loader.py             # PDF 提取
+│   ├── docx_loader.py            # DOCX 提取
+│   ├── markdown_loader.py        # Markdown 提取
+│   ├── text_loader.py            # TXT / 通用纯文本
+│   └── code_loader.py            # 代码文件读取
+│
+├── cleaners/                     # 文本清洗层：负责“原始文本 -> 规范化文本”
+│   ├── __init__.py
+│   ├── basic.py                  # 基础清洗：空白、换行、控制字符
+│   ├── markdown.py               # Markdown 特殊清洗策略（可选保留/去语法）
+│   ├── code.py                   # 代码文本清洗策略
+│   └── normalize.py              # 通用规范化工具
+│
+├── chunkers/                     # 分块层：负责“文本 -> chunk 列表”
+│   ├── __init__.py
+│   ├── base.py                   # Chunker 抽象接口
+│   ├── fixed_window.py           # 固定窗口 / overlap 分块
+│   ├── paragraph.py              # 按段落分块
+│   ├── line.py                   # 按行分块
+│   ├── semantic.py               # 语义分块（后续接 LangChain / LlamaIndex）
+│   └── router.py                 # 根据 strategy 选择分块器
+│
+├── dedupers/                     # 去重层：负责“chunk 列表 -> 去重后 chunk 列表”
+│   ├── __init__.py
+│   ├── exact.py                  # 精确去重（md5/content_hash）
+│   ├── minhash.py                # 近似去重（DataSketch / MinHash）
+│   └── router.py                 # 按策略切换 exact / minhash
+│
+├── encoders/                     # 编码层：负责“chunk -> vector”
+│   ├── __init__.py
+│   ├── base.py                   # Encoder 抽象接口
+│   ├── sbert.py                  # SBERT / sentence-transformers 编码器
+│   ├── factory.py                # 根据配置加载指定编码模型
+│   └── cache.py                  # 可选：编码缓存
+│
+├── metadata/                     # 元数据构建层
+│   ├── __init__.py
+│   ├── document.py               # 文档级元数据构建
+│   ├── chunk.py                  # chunk 级元数据构建
+│   └── hashing.py                # content_hash / doc_id 等计算
+│
+├── pipeline/                     # 流水线编排层
+│   ├── __init__.py
+│   ├── load_stage.py             # load_document 阶段
+│   ├── chunk_stage.py            # chunk_text 阶段
+│   ├── dedup_stage.py            # dedup 阶段
+│   ├── encode_stage.py           # encode_chunks 阶段
+│   └── run_pipeline.py           # 总编排
+│
+├── schemas/                      # 4.1 模块内部的数据定义（不是 4.3 的最终 models）
+│   ├── __init__.py
+│   ├── document.py               # RawDocument / CleanDocument
+│   ├── chunk.py                  # RawChunk / TextChunk
+│   └── pipeline_result.py        # run_pipeline 中间结果
+│
+└── tests/
+    ├── test_loaders.py
+    ├── test_cleaners.py
+    ├── test_chunkers.py
+    ├── test_dedupers.py
+    ├── test_encoders.py
+    └── test_pipeline.py
 ```
 
 4.1 在 Phase 1 不需要关心 Qdrant、FAISS、SQLite 的实现细节，只需要稳定产出：
