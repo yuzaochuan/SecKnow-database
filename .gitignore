@@ -1,34 +1,118 @@
 # =========================
-# Python
-# =========================
-
-# 编译文件
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pyc.*
-*.py,cover
-
-# 虚拟环境
-
-.venv/
-venv/
-*.egg-info/
-__pycache__/
-# =========================
-# macOS 系统文件
+# OS / Editor
 # =========================
 .DS_Store
 .AppleDouble
 .LSOverride
+Thumbs.db
+Desktop.ini
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # =========================
-# Local database/index artifacts
+# Python
 # =========================
-db/*.sqlite
-db/*.sqlite3
-db/*.faiss
-db/*.index
-db/*.json
-db/*.npy
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc.*
+*.py,cover
+
+.python-version
+.ipynb_checkpoints/
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+.eggs/
+*.egg
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.nox/
+.tox/
+
+# Coverage / test reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+nosetests.xml
+test-results/
+
+# Logs / runtime
+*.log
+*.pid
+*.seed
+*.stackdump
+
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+frontend/.eslintcache
+*.tsbuildinfo
+
+# =========================
+# Env files
+# =========================
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# =========================
+# Backend runtime artifacts
+# =========================
+backend/db/
+backend/export/
+backend/exports/
+backend/tmp/
+backend/temp/
+
+# Local DB / ANN artifacts (root-level fallback)
+db/
+*.sqlite
+*.sqlite3
+*.db
+*.faiss
+*.index
+*.npy
+
+# =========================
+# ML / model caches (if redirected into repo)
+# =========================
+.cache/
+.hf/
+huggingface/
+models/
+checkpoints/
+wandb/
+mlruns/
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.tmp
+*.orig
