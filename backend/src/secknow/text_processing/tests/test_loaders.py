@@ -32,29 +32,43 @@ def test_load_docx(tmp_path: Path) -> None:
 
 
 def test_load_pdf_with_monkeypatch(tmp_path: Path, monkeypatch) -> None:
-    """pdf 路由应调用 pdf_loader 并返回拼接文本。"""
+    """pdf 路由应经 PyMuPDF 打开并由 pdf_advanced 处理各页。"""
+    monkeypatch.setenv("PDF_OCR_ENABLED", "0")
     file_path = tmp_path / "sample.pdf"
     file_path.write_bytes(b"%PDF-1.4")
 
-    class _FakePage:
+    class FakePage:
         def __init__(self, content: str):
             self._content = content
 
-        def extract_text(self) -> str:
+        def get_text(self, mode: str = "text") -> str:
             return self._content
 
-    class _FakePdf:
-        pages = [_FakePage("第一页"), _FakePage("第二页")]
+        def get_pixmap(self, **_kwargs):
+            raise AssertionError("单测不应触发 OCR 光栅化")
 
-        def __enter__(self):
-            return self
+        def find_tables(self):
+            class _TF:
+                tables: list = []
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+            return _TF()
+
+    class FakeDoc:
+        def __init__(self) -> None:
+            self._pages = [FakePage("第一页"), FakePage("第二页")]
+
+        def __len__(self) -> int:
+            return len(self._pages)
+
+        def __getitem__(self, i: int) -> FakePage:
+            return self._pages[i]
+
+        def close(self) -> None:
+            return None
 
     monkeypatch.setattr(
-        "secknow.text_processing.loaders.pdf_loader.pdfplumber.open",
-        lambda *_args, **_kwargs: _FakePdf(),
+        "secknow.text_processing.loaders.pdf_loader.fitz.open",
+        lambda *_a, **_kw: FakeDoc(),
     )
 
     text = load_document_text(file_path)

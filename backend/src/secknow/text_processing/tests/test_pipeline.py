@@ -34,3 +34,19 @@ def test_run_pipeline_functional_entry(tmp_path: Path, monkeypatch) -> None:
     records = run_pipeline(file_path, zone_id="ai")
     assert len(records) == 1
     assert records[0].metadata.zone_id == "ai"
+
+
+def test_process_text_no_disk_write(tmp_path: Path, monkeypatch) -> None:
+    """process_text 不应要求磁盘上已存在源文件。"""
+    monkeypatch.setenv("EMBEDDING_MODE", "fake")
+    monkeypatch.setenv("EMBEDDING_DIM", "384")
+
+    pipeline = DocumentTextPipeline(max_tokens=40, overlap=5)
+    target = tmp_path / "virtual" / "note.md"
+    records = pipeline.process_text(
+        "# 标题\n正文一行。",
+        source_path=str(target),
+        zone_id="crypto",
+    )
+    assert len(records) >= 1
+    assert not target.exists()

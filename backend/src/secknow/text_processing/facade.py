@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-"""4.1 对外门面：提供函数式接口和面向对象接口。"""
+"""4.1 对外门面：提供函数式接口和面向对象接口。
+
+**近期 API 变动**：`load_document` 增加可选关键字参数 `normalize`（默认 False 保持旧行为）。
+为 True 时走与 `run_pipeline` 相同的 `clean_document_text`（basic + 按扩展名类型清洗）。
+"""
 
 from pathlib import Path
 from typing import Iterable
@@ -13,9 +17,21 @@ from .loaders.router import load_document_text
 from .pipeline.run_pipeline import DocumentTextPipeline, run_pipeline
 
 
-def load_document(file: str | Path) -> str:
-    """读取文件并返回原始文本。"""
-    return load_document_text(file)
+def load_document(file: str | Path, *, normalize: bool = False) -> str:
+    """读取文件并返回文本；normalize=True 时按扩展名做与流水线一致的基础 + 类型清洗。
+
+    `normalize=False`：与历史行为一致，仅 loader 抽取原始文本（可能含冗余空白等）。
+    """
+    text = load_document_text(file)
+    if not normalize:
+        return text
+    # 延迟导入：多数调用方只读原文时不必加载 cleaners 链。
+    from .cleaners.document_clean import clean_document_text
+    from .config import SUPPORTED_EXTS
+
+    ext = Path(file).suffix.lower() or ".txt"
+    file_type = SUPPORTED_EXTS.get(ext, "text")
+    return clean_document_text(text, file_type)
 
 
 def chunk_text(
