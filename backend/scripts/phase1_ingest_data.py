@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-"""Phase 1 联调脚本：把 data/ 文件批量走 4.1 流水线并写入 4.3。"""
+"""Phase 1 联调脚本：把 data/ 文件批量走 4.1 流水线并写入 4.3。
+
+CLI 已对齐 4.1 扩展能力：
+- `--chunk-strategy` 增加 paragraph / line / semantic（semantic 需 EMBEDDING_MODE=sbert，见 chunkers/semantic.py）。
+- `--dedup-strategy` 支持 minhash（近似去重，见 dedupers/minhash.py）。
+"""
 
 import argparse
 import os
@@ -58,11 +63,25 @@ def parse_args() -> argparse.Namespace:
         default=int(os.getenv("EMBEDDING_DIM", "384")),
         help="向量维度（默认 384）",
     )
+    # 与 secknow.text_processing.chunkers.router._SUPPORTED 保持一致。
     parser.add_argument(
         "--chunk-strategy",
         default="hybrid",
-        choices=["hybrid", "fixed_window"],
-        help="分块策略",
+        choices=[
+            "hybrid",
+            "fixed_window",
+            "paragraph",
+            "line",
+            "semantic",
+        ],
+        help="分块策略（semantic=LangChain 语义分块，勿与 --embedding-mode fake 同用）",
+    )
+    # 与 secknow.text_processing.dedupers.router 支持列表一致。
+    parser.add_argument(
+        "--dedup-strategy",
+        default="exact",
+        choices=["exact", "minhash"],
+        help="去重策略：exact=内容哈希完全相同；minhash=近似相似",
     )
     parser.add_argument("--max-tokens", type=int, default=300, help="分块窗口大小")
     parser.add_argument("--overlap", type=int, default=50, help="分块 overlap")
@@ -168,6 +187,7 @@ def main() -> None:
 
     pipeline = DocumentTextPipeline(
         chunk_strategy=args.chunk_strategy,
+        dedup_strategy=args.dedup_strategy,
         max_tokens=args.max_tokens,
         overlap=args.overlap,
         embedding_mode=args.embedding_mode,

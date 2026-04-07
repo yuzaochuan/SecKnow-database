@@ -49,7 +49,7 @@
 
 ## 6. 与 Vue 前端的接入方式
 
-前端不直接调用 `stores/*`。建议链路保持：
+前端不直接调用 `stores/`*。建议链路保持：
 
 `Vue(4.6) -> FastAPI(4.5) -> VectorInfrastructureService(4.3)`
 
