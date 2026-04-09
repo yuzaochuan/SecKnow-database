@@ -19,6 +19,16 @@ except ImportError:  # pragma: no cover - 依赖运行环境
 
 
 class SparseTextIndex(ABC):
+    _FILTERABLE_FIELDS = {
+        "doc_id",
+        "filename",
+        "source_path",
+        "extension",
+        "file_type",
+        "language",
+        "record_type",
+    }
+
     @abstractmethod
     def upsert(self, zone_id: ZoneId, records: list[ChunkRecord]) -> None:
         ...
@@ -28,7 +38,13 @@ class SparseTextIndex(ABC):
         ...
 
     @abstractmethod
-    def search(self, zone_id: ZoneId, query: str, top_k: int = 10) -> list[SparseHit]:
+    def search(
+        self,
+        zone_id: ZoneId,
+        query: str,
+        top_k: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[SparseHit]:
         ...
 
 
@@ -70,7 +86,13 @@ class MemoryBm25Index(SparseTextIndex):
             zone_docs.pop(chunk_id, None)
         self._rebuild(zone_id)
 
-    def search(self, zone_id: ZoneId, query: str, top_k: int = 10) -> list[SparseHit]:
+    def search(
+        self,
+        zone_id: ZoneId,
+        query: str,
+        top_k: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[SparseHit]:
         assert_zone(zone_id)
         if not query.strip():
             return []
@@ -87,9 +109,12 @@ class MemoryBm25Index(SparseTextIndex):
         if scores.size == 0:
             return []
 
-        top_indices = np.argsort(-scores)[:top_k]
+        top_indices = np.argsort(-scores)
         hits: list[SparseHit] = []
         for idx in top_indices.tolist():
+            metadata = metadatas[idx]
+            if not self._matches_filters(metadata, filters):
+                continue
             hits.append(
                 SparseHit(
                     chunk_id=chunk_ids[idx],
@@ -97,9 +122,11 @@ class MemoryBm25Index(SparseTextIndex):
                     zone_id=zone_id,
                     score=float(scores[idx]),
                     text=texts[idx],
-                    metadata=metadatas[idx],
+                    metadata=metadata,
                 )
             )
+            if len(hits) >= top_k:
+                break
         return hits
 
     def _rebuild(self, zone_id: ZoneId) -> None:
@@ -114,6 +141,16 @@ class MemoryBm25Index(SparseTextIndex):
         metadatas = [zone_docs[c][2] for c in chunk_ids]
         tokenized = [_tokenize(text) for text in texts]
         self._models[zone_id] = (BM25Okapi(tokenized), chunk_ids, texts, doc_ids, metadatas)
+
+    def _matches_filters(self, metadata: dict[str, Any], filters: dict[str, Any] | None) -> bool:
+        if not filters:
+            return True
+        for key, value in filters.items():
+            if key not in self._FILTERABLE_FIELDS:
+                continue
+            if metadata.get(key) != value:
+                return False
+        return True
 
 
 class SQLiteFtsSparseIndex(SparseTextIndex):
@@ -132,26 +169,43 @@ class SQLiteFtsSparseIndex(SparseTextIndex):
         assert_zone(zone_id)
         _ = chunk_ids
 
-    def search(self, zone_id: ZoneId, query: str, top_k: int = 10) -> list[SparseHit]:
+    def search(
+        self,
+        zone_id: ZoneId,
+        query: str,
+        top_k: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[SparseHit]:
         assert_zone(zone_id)
         if not query.strip():
             return []
 
+        where_clauses = ["chunk_fts MATCH ?", "c.zone_id = ?", "c.is_deleted = 0"]
+        params: list[Any] = [_sqlite_fts_query(query), zone_id]
+
+        effective_filters = self._apply_default_record_type(filters)
+        for key, value in (effective_filters or {}).items():
+            if key not in self._FILTERABLE_FIELDS:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                where_clauses.append(f"c.{key} = ?")
+                params.append(value)
+
+        sql = f"""
+            SELECT c.chunk_id, c.doc_id, c.zone_id, c.text, c.filename, c.source_path, c.extension,
+                   c.chunk_index, c.chunk_count, c.char_len, c.content_hash, c.mtime, c.size_bytes,
+                   c.file_type, c.language, c.record_type, bm25(chunk_fts) AS bm25_score
+            FROM chunk_fts
+            JOIN chunks c ON c.id = chunk_fts.rowid
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY bm25_score
+            LIMIT ?
+        """
+        params.append(top_k)
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT c.chunk_id, c.doc_id, c.zone_id, c.text, c.filename, c.source_path, c.extension,
-                       c.chunk_index, c.chunk_count, c.char_len, c.content_hash, c.mtime, c.size_bytes,
-                       c.file_type, c.language, c.record_type, bm25(chunk_fts) AS bm25_score
-                FROM chunk_fts
-                JOIN chunks c ON c.id = chunk_fts.rowid
-                WHERE chunk_fts MATCH ? AND c.zone_id = ? AND c.is_deleted = 0 AND c.record_type = 'knowledge'
-                ORDER BY bm25_score
-                LIMIT ?
-                """,
-                (_sqlite_fts_query(query), zone_id, top_k),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
 
         hits: list[SparseHit] = []
         for row in rows:
@@ -179,6 +233,13 @@ class SQLiteFtsSparseIndex(SparseTextIndex):
                 )
             )
         return hits
+
+    def _apply_default_record_type(self, filters: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not filters:
+            return {"record_type": "knowledge"}
+        if "record_type" not in filters:
+            return {**filters, "record_type": "knowledge"}
+        return filters
 
 
 def _tokenize(text: str) -> list[str]:

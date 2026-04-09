@@ -37,6 +37,14 @@ class VectorStore(ABC):
         """按外部 chunk_id 删除 chunk。"""
 
     @abstractmethod
+    def delete_by_doc_id(self, zone_id: ZoneId, doc_id: str) -> DeleteResult:
+        """按文档 ID 删除该文档下的所有 chunk。"""
+
+    @abstractmethod
+    def replace_document(self, zone_id: ZoneId, doc_id: str, records: list[ChunkRecord]) -> UpsertResult:
+        """替换整个文档：先删除旧 chunk，再插入新 records。"""
+
+    @abstractmethod
     def get_baseline(self, zone_id: ZoneId) -> BaselineBundle:
         """为安全模块加载基线向量。"""
 

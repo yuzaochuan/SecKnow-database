@@ -66,6 +66,15 @@ class VectorInfrastructureService:
         self.sparse_index.delete(zone_id=zone_id, chunk_ids=chunk_ids)
         return result
 
+    def delete_by_doc_id(self, zone_id: ZoneId, doc_id: str) -> DeleteResult:
+        result = self.dense_store.delete_by_doc_id(zone_id=zone_id, doc_id=doc_id)
+        if result.chunk_ids:
+            self.sparse_index.delete(zone_id=zone_id, chunk_ids=result.chunk_ids)
+        return result
+
+    def replace_document(self, zone_id: ZoneId, doc_id: str, records: list[ChunkRecord]) -> UpsertResult:
+        return self.dense_store.replace_document(zone_id=zone_id, doc_id=doc_id, records=records)
+
     def export_zone(self, zone_id: ZoneId, target_dir: str) -> dict[str, Any]:
         return self.dense_store.export_zone(zone_id=zone_id, target_dir=target_dir)
 

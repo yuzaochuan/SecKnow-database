@@ -22,6 +22,16 @@ from secknow.vector_store.stores.base import VectorStore
 class QdrantVectorStore(VectorStore):
     """基于 Qdrant 的在线向量存储后端。"""
 
+    _FILTERABLE_FIELDS = {
+        "doc_id",
+        "filename",
+        "source_path",
+        "extension",
+        "file_type",
+        "language",
+        "record_type",
+    }
+
     def __init__(
         self,
         host: str = "localhost",
@@ -163,6 +173,58 @@ class QdrantVectorStore(VectorStore):
             chunk_ids=chunk_ids,
         )
 
+    def delete_by_doc_id(self, zone_id: ZoneId, doc_id: str) -> DeleteResult:
+        assert_zone(zone_id)
+        if not doc_id:
+            return DeleteResult(zone_id=zone_id, requested=0, deleted=0, chunk_ids=[])
+
+        filter_obj = self.qm.Filter(
+            must=[
+                self.qm.FieldCondition(
+                    key="doc_id", match=self.qm.MatchValue(value=doc_id)
+                )
+            ]
+        )
+
+        deleted_chunk_ids: list[str] = []
+        offset: Any = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self._collection_name(zone_id),
+                scroll_filter=filter_obj,
+                with_payload=True,
+                with_vectors=False,
+                limit=256,
+                offset=offset,
+            )
+            if not points:
+                break
+            chunk_ids = [str(point.payload.get("chunk_id", point.id)) for point in points]
+            deleted_chunk_ids.extend(chunk_ids)
+            self.client.delete(
+                collection_name=self._collection_name(zone_id),
+                points_selector=self.qm.PointIdsList(
+                    points=[point.id for point in points]
+                ),
+                wait=True,
+            )
+            if offset is None:
+                break
+
+        return DeleteResult(
+            zone_id=zone_id,
+            requested=1,
+            deleted=len(deleted_chunk_ids),
+            chunk_ids=deleted_chunk_ids,
+        )
+
+    def replace_document(self, zone_id: ZoneId, doc_id: str, records: list[ChunkRecord]) -> UpsertResult:
+        assert_zone(zone_id)
+        self.delete_by_doc_id(zone_id=zone_id, doc_id=doc_id)
+        if not records:
+            return UpsertResult(zone_id=zone_id, attempted=0, inserted=0, chunk_ids=[])
+        return self.upsert(zone_id=zone_id, records=records)
+
     def get_baseline(self, zone_id: ZoneId) -> BaselineBundle:
         assert_zone(zone_id)
         filter_obj = self.qm.Filter(
@@ -257,6 +319,7 @@ class QdrantVectorStore(VectorStore):
             "records_file": str(records_path),
             "manifest_file": str(manifest_path),
             "record_count": len(records),
+            "baseline_count": baseline_count,
         }
 
     def _collection_name(self, zone_id: ZoneId) -> str:
@@ -286,13 +349,10 @@ class QdrantVectorStore(VectorStore):
 
     def _build_query_filter(self, filters: dict[str, Any] | None) -> Any:
         conditions = []
-        if not filters or "record_type" not in filters:
-            conditions.append(
-                self.qm.FieldCondition(
-                    key="record_type", match=self.qm.MatchValue(value="knowledge")
-                )
-            )
-        for key, value in (filters or {}).items():
+        effective_filters = self._apply_default_record_type(filters)
+        for key, value in (effective_filters or {}).items():
+            if key not in self._FILTERABLE_FIELDS:
+                continue
             if isinstance(value, (str, int, float, bool)):
                 conditions.append(
                     self.qm.FieldCondition(
@@ -303,6 +363,13 @@ class QdrantVectorStore(VectorStore):
         if not conditions:
             return None
         return self.qm.Filter(must=conditions)
+
+    def _apply_default_record_type(self, filters: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not filters:
+            return {"record_type": "knowledge"}
+        if "record_type" not in filters:
+            return {**filters, "record_type": "knowledge"}
+        return filters
 
     def _extract_embedding_dim(self, records: list[dict[str, Any]]) -> int:
         if not records:

@@ -273,6 +273,51 @@ class FaissSqliteVectorStore(VectorStore):
             chunk_ids=chunk_ids,
         )
 
+    def delete_by_doc_id(self, zone_id: ZoneId, doc_id: str) -> DeleteResult:
+        assert_zone(zone_id)
+        if not doc_id:
+            return DeleteResult(zone_id=zone_id, requested=0, deleted=0, chunk_ids=[])
+
+        now = int(time.time())
+        with self._connect() as conn:
+            chunk_ids = conn.execute(
+                """
+                SELECT chunk_id FROM chunks
+                WHERE zone_id = ? AND doc_id = ? AND is_deleted = 0
+                """,
+                (zone_id, doc_id),
+            ).fetchall()
+            chunk_ids = [row["chunk_id"] for row in chunk_ids]
+
+            if not chunk_ids:
+                return DeleteResult(zone_id=zone_id, requested=1, deleted=0, chunk_ids=[])
+
+            placeholders = ",".join(["?"] * len(chunk_ids))
+            cursor = conn.execute(
+                f"""
+                UPDATE chunks
+                SET is_deleted = 1, updated_at = ?
+                WHERE zone_id = ? AND chunk_id IN ({placeholders})
+                """,
+                (now, zone_id, *chunk_ids),
+            )
+            conn.commit()
+        self._rebuild_zone_index(zone_id)
+        deleted = cursor.rowcount if cursor.rowcount is not None else 0
+        return DeleteResult(
+            zone_id=zone_id,
+            requested=1,
+            deleted=deleted,
+            chunk_ids=chunk_ids,
+        )
+
+    def replace_document(self, zone_id: ZoneId, doc_id: str, records: list[ChunkRecord]) -> UpsertResult:
+        assert_zone(zone_id)
+        self.delete_by_doc_id(zone_id=zone_id, doc_id=doc_id)
+        if not records:
+            return UpsertResult(zone_id=zone_id, attempted=0, inserted=0, chunk_ids=[])
+        return self.upsert(zone_id=zone_id, records=records)
+
     def get_baseline(self, zone_id: ZoneId) -> BaselineBundle:
         assert_zone(zone_id)
         with self._connect() as conn:
@@ -379,6 +424,8 @@ class FaissSqliteVectorStore(VectorStore):
             "faiss_file": str(index_out_path),
             "manifest_file": str(manifest_path),
             "checksums_file": str(checksums_path),
+            "record_count": counts["knowledge"],
+            "baseline_count": counts["baseline"],
         }
 
     def _fetch_rows_by_ids(

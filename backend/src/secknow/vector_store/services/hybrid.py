@@ -38,6 +38,7 @@ class HybridRetriever:
             zone_id=zone_id,
             query=query,
             top_k=max(top_k * 5, top_k),
+            filters=filters,
         )
         return self._rrf_fuse(dense_hits, sparse_hits, top_k=top_k)
 
