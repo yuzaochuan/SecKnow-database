@@ -1,5 +1,25 @@
 from __future__ import annotations
 
+"""
+Phase 1 冒烟测试脚本（演示用途）
+
+此脚本用于人工联调验证，不承担完整回归测试职责。
+主要验证以下能力：
+1. 服务初始化（在线/离线模式）
+2. 数据 upsert（knowledge 和 baseline）
+3. 向量检索（默认只返回 knowledge）
+4. 基线提取（只返回 baseline）
+5. 混合检索（dense + sparse 融合）
+
+完整回归测试由以下自动化测试文件覆盖：
+- backend/tests/vector_store/test_models.py：模型与契约测试
+- backend/tests/vector_store/test_online_store.py：在线存储查询测试
+- backend/tests/vector_store/test_offline_store.py：离线存储查询测试
+- backend/tests/vector_store/test_hybrid_search.py：混合检索专项测试
+- backend/tests/vector_store/test_export.py：导出测试
+- backend/tests/vector_store/test_document_ops.py：文档级操作测试
+"""
+
 import hashlib
 import os
 import time
@@ -137,6 +157,7 @@ def main() -> None:
     records = build_demo_records()
 
     print("=== Phase 1 Smoke Start ===")
+    print("此脚本用于演示和人工联调，完整回归测试请运行自动化测试套件")
     print(f"record_count={len(records)}")
 
     upsert_result = service.upsert(zone_id="cyber", records=records)
@@ -182,6 +203,7 @@ def main() -> None:
         )
 
     print("=== Phase 1 Smoke Done ===")
+    print("完整回归测试请运行: pytest backend/tests/vector_store/")
 
 
 if __name__ == "__main__":

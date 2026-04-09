@@ -330,3 +330,105 @@ VECTOR_MODE=offline PYTHONPATH=src python -m scripts.phase1_smoke
 3. 先全部用 `record_type="knowledge"` 跑通入库
 4. 再补 `record_type="baseline"` 验证 4.2 基线路径
 5. 4.3 与 4.1 字段契约稳定后，再进入 Phase 2 优化
+
+## 4.3 测试与验收
+
+### 测试目录结构
+
+```text
+backend/tests/vector_store/
+├── fixtures.py                 # 统一测试数据
+├── test_models.py              # 模型与契约测试
+├── test_online_store.py        # 在线存储查询测试
+├── test_offline_store.py       # 离线存储查询测试
+├── test_hybrid_search.py       # 混合检索专项测试
+├── test_export.py              # 导出测试
+└── test_document_ops.py        # 文档级操作测试
+```
+
+### 运行测试
+
+#### 运行所有测试
+
+```bash
+cd backend
+pytest tests/vector_store/ -v
+```
+
+#### 运行特定测试文件
+
+```bash
+# 运行模型与契约测试
+pytest tests/vector_store/test_models.py -v
+
+# 运行在线存储测试
+pytest tests/vector_store/test_online_store.py -v
+
+# 运行离线存储测试
+pytest tests/vector_store/test_offline_store.py -v
+
+# 运行混合检索测试
+pytest tests/vector_store/test_hybrid_search.py -v
+
+# 运行导出测试
+pytest tests/vector_store/test_export.py -v
+
+# 运行文档级操作测试
+pytest tests/vector_store/test_document_ops.py -v
+```
+
+### 验收点
+
+#### Online 存储验收点
+
+1. **服务初始化**：Qdrant 连接正常，集合创建成功
+2. **数据 upsert**：knowledge 和 baseline 数据成功入库
+3. **向量检索**：默认只返回 knowledge 类型的结果
+4. **过滤逻辑**：支持按 doc_id、filename、file_type 等字段过滤
+5. **基线提取**：get_baseline() 只返回 baseline 类型的结果
+6. **删除操作**：删除后查询结果正确更新
+7. **导出功能**：导出产物完整，manifest 字段齐全
+
+#### Offline 存储验收点
+
+1. **服务初始化**：FAISS + SQLite 初始化成功
+2. **数据 upsert**：knowledge 和 baseline 数据成功入库
+3. **向量检索**：默认只返回 knowledge 类型的结果
+4. **过滤逻辑**：支持按 doc_id、filename、file_type 等字段过滤
+5. **基线提取**：get_baseline() 只返回 baseline 类型的结果
+6. **删除操作**：删除后查询结果正确更新
+7. **导出功能**：导出产物完整，manifest 字段齐全
+
+### 测试口径
+
+#### 查询语义一致
+
+- **测试目标**：验证 online 和 offline 存储在相同输入下返回语义一致的结果
+- **测试方法**：使用相同的测试数据和查询向量，分别测试在线和离线存储
+- **验收标准**：两者返回的结果集在 chunk_id、doc_id、score 排序等方面保持一致
+
+#### Hybrid/Search 过滤一致
+
+- **测试目标**：验证 hybrid_search() 与 search() 在过滤规则上保持一致
+- **测试方法**：使用相同的过滤条件，分别测试普通搜索和混合搜索
+- **验收标准**：两者返回的结果都符合过滤条件，不混入其他文件或文档的内容
+
+### 文档级操作验收
+
+- **删除操作**：按文档 ID 删除所有相关 chunk 后，查询结果中不再包含该文档的内容
+- **更新操作**：文档更新后，旧 chunk 不残留，只返回更新后的内容
+- **数据隔离**：baseline 和 knowledge 数据不串流，各自独立
+
+### 演示脚本
+
+保留 `backend/scripts/phase1_smoke.py` 作为人工联调用例，用于快速验证核心链路：
+
+```bash
+# 在线模式
+PYTHONPATH=src python -m scripts.phase1_smoke
+
+# 离线模式
+VECTOR_MODE=offline PYTHONPATH=src python -m scripts.phase1_smoke
+```
+
+**注意**：smoke 脚本仅用于演示和人工联调，不承担完整回归测试职责。完整回归测试请运行自动化测试套件。
